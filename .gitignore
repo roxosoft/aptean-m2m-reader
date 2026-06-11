@@ -1,0 +1,15 @@
+# Build artifacts
+bin/
+obj/
+
+# Secrets / credentials (do NOT commit)
+appsettings.json
+appsettings.prod.json
+token_key
+
+# Cursor / SpecStory tooling history
+.specstory/
+
+# OS / editor
+Thumbs.db
+.DS_Store
