@@ -9,6 +9,11 @@ namespace JetSolutions.BillVendorSync;
 
 internal static class Program
 {
+    // Last-resort placeholders used to satisfy Bill.com address validation when neither
+    // Bill.com nor the M2M Excel row provides a city/zip for an otherwise-matched vendor.
+    private const string PlaceholderCity = "TBD";
+    private const string PlaceholderZip = "00000";
+
     private static async Task<int> Main(string[] args)
     {
         Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -130,24 +135,40 @@ internal static class Program
         catch (BillApiException ex) when (IsIncompleteAddress(ex))
         {
             // The vendor's stored address is incomplete and Bill.com re-validates it on update.
-            // Retry once, supplying the missing city/zip from the matched M2M Excel row.
-            var city = result.M2M!.City;
-            var zip = result.M2M!.ZipCode;
+            // Retry once, filling the missing city/zip from the matched M2M Excel row, and as a
+            // last resort using placeholders to force the save when the Excel row also lacks them.
+            var existing = vendor.Address;
+            bool needCity = string.IsNullOrWhiteSpace(existing?.City);
+            bool needZip = string.IsNullOrWhiteSpace(existing?.ZipOrPostalCode);
 
-            if (string.IsNullOrWhiteSpace(city) || string.IsNullOrWhiteSpace(zip))
-            {
-                outcome.Applied = false;
-                outcome.Error = "Bill.com address incomplete (missing city/zip) and the M2M Excel row has no city/zip to fill it; skipped.";
-                Console.WriteLine($"  [SKIP] {vendor.Name} ({vendor.Id}): {outcome.Error}");
-                return outcome;
-            }
+            var excelCity = result.M2M!.City;
+            var excelZip = result.M2M!.ZipCode;
+
+            string cityToUse = !string.IsNullOrWhiteSpace(excelCity) ? excelCity! : PlaceholderCity;
+            string zipToUse = !string.IsNullOrWhiteSpace(excelZip) ? excelZip! : PlaceholderZip;
+
+            bool placeholderCity = needCity && string.IsNullOrWhiteSpace(excelCity);
+            bool placeholderZip = needZip && string.IsNullOrWhiteSpace(excelZip);
 
             try
             {
-                var address = BuildAddressFill(vendor, city!, zip!);
+                var address = BuildAddressFill(vendor, cityToUse, zipToUse);
                 await SendWithTransientRetryAsync(() => client.UpdateVendorCompanyNameAsync(vendor.Id, m2mId, address));
                 outcome.Applied = true;
-                Console.WriteLine($"  [OK*]  {vendor.Name} ({vendor.Id}) -> companyName '{m2mId}' (filled city/zip from Excel)");
+
+                if (placeholderCity || placeholderZip)
+                {
+                    var parts = new List<string>();
+                    if (placeholderCity) parts.Add($"city='{PlaceholderCity}'");
+                    if (placeholderZip) parts.Add($"zip='{PlaceholderZip}'");
+                    outcome.Warning = $"Saved using placeholder address ({string.Join(", ", parts)}) because it was missing in both Bill.com and the M2M Excel row.";
+                    Console.WriteLine($"  [OK!]  {vendor.Name} ({vendor.Id}) -> companyName '{m2mId}' (placeholder {string.Join("/", parts)} to force save)");
+                }
+                else
+                {
+                    Console.WriteLine($"  [OK*]  {vendor.Name} ({vendor.Id}) -> companyName '{m2mId}' (filled city/zip from Excel)");
+                }
+
                 return outcome;
             }
             catch (Exception ex2)

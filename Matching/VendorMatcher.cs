@@ -71,7 +71,7 @@ public sealed class VendorMatcher
 
             foreach (var m2m in m2mRows)
             {
-                var (picked, _) = PickCandidate(m2m, available, m2mRows.Count);
+                var (picked, byRecency) = PickCandidate(m2m, available, m2mRows.Count);
 
                 if (picked is null)
                 {
@@ -82,7 +82,11 @@ public sealed class VendorMatcher
 
                 available.Remove(picked);
                 consumedBillIds.Add(picked.Id);
-                results.Add(BuildMatch(m2m, picked, VendorMatchType.Exact));
+
+                var note = byRecency
+                    ? $"Ambiguous exact-name match resolved by latest updatedTime ({FormatTime(picked.UpdatedTime)})."
+                    : null;
+                results.Add(BuildMatch(m2m, picked, VendorMatchType.Exact, note));
             }
         }
 
@@ -127,7 +131,7 @@ public sealed class VendorMatcher
             var equal = candidates.Where(x => x.Tokens.SetEquals(m2mTokens)).ToList();
             var pool = equal.Count > 0 ? equal : candidates;
 
-            var picked = ResolveRelaxed(m2m, pool);
+            var (picked, byRecency) = ResolveRelaxed(m2m, pool);
             if (picked is null)
             {
                 results.Add(new MatchResult
@@ -136,14 +140,18 @@ public sealed class VendorMatcher
                     MatchType = VendorMatchType.Relaxed,
                     M2M = m2m,
                     Candidates = pool.Select(x => x.Vendor).ToList(),
-                    Note = $"{pool.Count} Bill.com vendors plausibly match by relaxed name; City/Zip did not resolve a single match.",
+                    Note = $"{pool.Count} Bill.com vendors plausibly match by relaxed name; could not resolve.",
                 });
 
                 continue;
             }
 
             consumedBillIds.Add(picked.Id);
-            results.Add(BuildMatch(m2m, picked, VendorMatchType.Relaxed));
+
+            var relaxedNote = byRecency
+                ? $"Ambiguous relaxed match (among {pool.Count}) resolved by latest updatedTime ({FormatTime(picked.UpdatedTime)})."
+                : null;
+            results.Add(BuildMatch(m2m, picked, VendorMatchType.Relaxed, relaxedNote));
         }
 
         // Report Bill.com vendors that matched nothing (report only).
@@ -163,18 +171,24 @@ public sealed class VendorMatcher
         return results;
     }
 
-    private static MatchResult BuildMatch(M2MVendor m2m, VendorResponseDto vendor, VendorMatchType type)
+    private static MatchResult BuildMatch(M2MVendor m2m, VendorResponseDto vendor, VendorMatchType type, string? extraNote = null)
     {
         var existing = vendor.AdditionalInfo?.CompanyName;
         if (!string.IsNullOrWhiteSpace(existing))
         {
+            var note = $"Existing companyName '{existing}' kept (would have set '{m2m.M2MVendorId}').";
+            if (!string.IsNullOrWhiteSpace(extraNote))
+            {
+                note = $"{extraNote} {note}";
+            }
+
             return new MatchResult
             {
                 Status = MatchStatus.AlreadySet,
                 MatchType = type,
                 M2M = m2m,
                 BillVendor = vendor,
-                Note = $"Existing companyName '{existing}' kept (would have set '{m2m.M2MVendorId}').",
+                Note = note,
             };
         }
 
@@ -184,34 +198,89 @@ public sealed class VendorMatcher
             MatchType = type,
             M2M = m2m,
             BillVendor = vendor,
+            Note = extraNote,
         };
     }
 
     /// <summary>
-    /// Picks the single best candidate for an M2M row from the available list.
-    /// Returns (null, candidates) when the choice is ambiguous.
+    /// Picks the single best candidate for an M2M row from the available list. When more than
+    /// one candidate is plausible and City/Zip cannot single one out, the candidate with the
+    /// latest updatedTime is chosen (ResolvedByRecency = true). Returns null only when there is
+    /// no usable candidate (the row is then deferred to the relaxed pass).
     /// </summary>
-    private static (VendorResponseDto? Picked, IReadOnlyList<VendorResponseDto> Ambiguous) PickCandidate(
+    private static (VendorResponseDto? Picked, bool ResolvedByRecency) PickCandidate(
         M2MVendor m2m,
         List<VendorResponseDto> available,
         int siblingCount)
     {
         if (available.Count == 0)
         {
-            return (null, Array.Empty<VendorResponseDto>());
+            return (null, false);
         }
 
         // Unique name match and only one M2M row for this name: trivially the match.
         if (available.Count == 1 && siblingCount == 1)
         {
-            return (available[0], available);
+            return (available[0], false);
         }
 
-        // Score each candidate by City/Zip agreement and keep the best-scoring set.
-        int bestScore = int.MinValue;
+        var best = BestByTiebreaker(m2m, available, out int bestScore);
+
+        // A positive score means at least City or Zip agreed: unique winner.
+        if (best.Count == 1 && bestScore > 0)
+        {
+            return (best[0], false);
+        }
+
+        // Single remaining candidate with no conflicting City/Zip signal is acceptable.
+        if (available.Count == 1 && bestScore >= 0)
+        {
+            return (available[0], false);
+        }
+
+        // Ambiguous (multiple plausible candidates): pick the most recently updated one.
+        if (best.Count > 1)
+        {
+            return (PickLatest(best), true);
+        }
+
+        return (null, false);
+    }
+
+    /// <summary>
+    /// Resolves a relaxed-match candidate pool to a single vendor. A unique City/Zip winner is
+    /// preferred; otherwise the most recently updated candidate is chosen (ResolvedByRecency = true).
+    /// </summary>
+    private static (VendorResponseDto? Picked, bool ResolvedByRecency) ResolveRelaxed(
+        M2MVendor m2m,
+        List<(VendorResponseDto Vendor, HashSet<string> Tokens)> pool)
+    {
+        if (pool.Count == 1)
+        {
+            return (pool[0].Vendor, false);
+        }
+
+        var best = BestByTiebreaker(m2m, pool.Select(x => x.Vendor), out int bestScore);
+
+        if (best.Count == 1 && bestScore > 0)
+        {
+            return (best[0], false);
+        }
+
+        // Ambiguous relaxed match: pick the most recently updated candidate.
+        return (PickLatest(best), true);
+    }
+
+    /// <summary>Returns the candidates that share the highest City/Zip tiebreaker score.</summary>
+    private static List<VendorResponseDto> BestByTiebreaker(
+        M2MVendor m2m,
+        IEnumerable<VendorResponseDto> candidates,
+        out int bestScore)
+    {
+        bestScore = int.MinValue;
         var best = new List<VendorResponseDto>();
 
-        foreach (var candidate in available)
+        foreach (var candidate in candidates)
         {
             int score = ScoreTiebreaker(m2m, candidate);
             if (score > bestScore)
@@ -226,52 +295,18 @@ public sealed class VendorMatcher
             }
         }
 
-        // A positive score means at least City or Zip agreed. Require a unique winner.
-        if (best.Count == 1 && bestScore > 0)
-        {
-            return (best[0], best);
-        }
-
-        // Single remaining candidate with no conflicting City/Zip signal is acceptable.
-        if (available.Count == 1 && bestScore >= 0)
-        {
-            return (available[0], available);
-        }
-
-        return (null, available);
+        return best;
     }
 
-    /// <summary>Resolves a relaxed-match candidate pool to a single vendor, or null if ambiguous.</summary>
-    private static VendorResponseDto? ResolveRelaxed(
-        M2MVendor m2m,
-        List<(VendorResponseDto Vendor, HashSet<string> Tokens)> pool)
-    {
-        if (pool.Count == 1)
-        {
-            return pool[0].Vendor;
-        }
+    /// <summary>Picks the candidate with the latest updatedTime (Id as a deterministic fallback).</summary>
+    private static VendorResponseDto PickLatest(IReadOnlyList<VendorResponseDto> vendors)
+        => vendors
+            .OrderByDescending(v => v.UpdatedTime ?? DateTimeOffset.MinValue)
+            .ThenBy(v => v.Id, StringComparer.Ordinal)
+            .First();
 
-        int bestScore = int.MinValue;
-        var best = new List<VendorResponseDto>();
-
-        foreach (var (vendor, _) in pool)
-        {
-            int score = ScoreTiebreaker(m2m, vendor);
-            if (score > bestScore)
-            {
-                bestScore = score;
-                best.Clear();
-                best.Add(vendor);
-            }
-            else if (score == bestScore)
-            {
-                best.Add(vendor);
-            }
-        }
-
-        // Only accept a relaxed match when City/Zip positively singled out one vendor.
-        return best.Count == 1 && bestScore > 0 ? best[0] : null;
-    }
+    private static string FormatTime(DateTimeOffset? time)
+        => time?.ToString("yyyy-MM-dd HH:mm 'UTC'zzz") ?? "unknown";
 
     private static int ScoreTiebreaker(M2MVendor m2m, VendorResponseDto candidate)
     {

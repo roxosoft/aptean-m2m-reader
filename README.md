@@ -36,10 +36,11 @@ Common rules for both passes:
 
 - Tiebreaker: `City` and `Zip Code` (Excel) ↔ `address.city` / `address.zipOrPostalCode`.
 - A non-empty existing `companyName` is **never overwritten** — flagged as `AlreadySet`.
-- Multiple unresolved candidates → `Ambiguous` (skipped, reported).
+- When more than one candidate is plausible and City/Zip cannot single one out, the
+  candidate with the **latest `updatedTime`** is chosen (the report `Note` records
+  that it was resolved by recency, with the timestamp).
 - No match → `Unmatched` (reported).
-- Relaxed matches require the tiebreaker to single out a unique vendor when more
-  than one candidate remains, and are confirmed with their own separate Y/N prompt.
+- Relaxed matches are still confirmed with their own separate Y/N prompt.
 
 ### Incomplete-address vendors
 
@@ -54,10 +55,14 @@ The tool handles this automatically:
 2. If that fails with the incomplete-address error, it retries **once**, supplying
    the missing `city`/`zip` from the matched M2M Excel row (preserving the
    vendor's existing `line1`/`state`/`country`).
-3. If the Excel row also lacks `city`/`zip`, the vendor is **skipped** and flagged
-   in the report (`Applied=false` with an explanatory `Error`).
+3. As a last resort, if the Excel row also lacks `city`/`zip`, the tool fills the
+   missing field(s) with placeholders (`city="TBD"`, `zip="00000"`) to force the
+   save. These records are still applied but flagged with a `Warning` in the CSV
+   report and counted under "incl. placeholder" in the final summary.
 
-Successful address-fill updates are logged with an `[OK*]` marker.
+Update log markers: `[OK]` companyName only, `[OK*]` city/zip filled from Excel,
+`[OK!]` saved using a placeholder address. The placeholder values are defined as
+`PlaceholderCity`/`PlaceholderZip` constants in `Program.cs`.
 
 ## Excel format
 

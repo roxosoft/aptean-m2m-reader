@@ -10,6 +10,9 @@ public sealed class UpdateOutcome
     public required MatchResult Result { get; init; }
     public bool Applied { get; set; }
     public string? Error { get; set; }
+
+    /// <summary>Non-fatal note attached to a successful update (e.g. placeholder address used).</summary>
+    public string? Warning { get; set; }
 }
 
 public static class ReportWriter
@@ -72,6 +75,7 @@ public static class ReportWriter
     {
         int updatedExact = outcomes.Count(o => o.Applied && o.Result.MatchType == VendorMatchType.Exact);
         int updatedRelaxed = outcomes.Count(o => o.Applied && o.Result.MatchType == VendorMatchType.Relaxed);
+        int placeholderAddr = outcomes.Count(o => o.Applied && !string.IsNullOrWhiteSpace(o.Warning));
         int failed = outcomes.Count(o => !o.Applied);
         int skipped = allResults.Count(r => r.Status == MatchStatus.AlreadySet);
         int ambiguous = allResults.Count(r => r.Status == MatchStatus.Ambiguous);
@@ -82,6 +86,7 @@ public static class ReportWriter
         Console.WriteLine("=== Final summary ===");
         Console.WriteLine($"  Updated (exact)      : {updatedExact}");
         Console.WriteLine($"  Updated (relaxed)    : {updatedRelaxed}");
+        Console.WriteLine($"  ...incl. placeholder : {placeholderAddr}");
         Console.WriteLine($"  Failed               : {failed}");
         Console.WriteLine($"  Skipped (already set): {skipped}");
         Console.WriteLine($"  Ambiguous            : {ambiguous}");
@@ -108,6 +113,8 @@ public static class ReportWriter
             string error = outcome?.Error ?? string.Empty;
             string vendorName = r.BillVendor?.Name ?? r.M2M?.VendorName ?? string.Empty;
 
+            var note = string.Join(" ", new[] { r.Note, outcome?.Warning }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
             sb.Append(Csv(r.Status.ToString())).Append(',')
               .Append(Csv(r.MatchType.ToString())).Append(',')
               .Append(Csv(vendorName)).Append(',')
@@ -117,7 +124,7 @@ public static class ReportWriter
               .Append(Csv(r.BillVendor?.AdditionalInfo?.CompanyName)).Append(',')
               .Append(Csv(applied)).Append(',')
               .Append(Csv(error)).Append(',')
-              .Append(Csv(r.Note))
+              .Append(Csv(note))
               .AppendLine();
         }
 

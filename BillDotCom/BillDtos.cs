@@ -60,6 +60,9 @@ public sealed class VendorResponseDto
 
     [JsonPropertyName("additionalInfo")]
     public AdditionalInfoDto? AdditionalInfo { get; set; }
+
+    [JsonPropertyName("updatedTime")]
+    public DateTimeOffset? UpdatedTime { get; set; }
 }
 
 public sealed class AdditionalInfoDto
