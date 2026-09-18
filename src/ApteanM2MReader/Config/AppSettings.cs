@@ -4,6 +4,7 @@ public sealed class AppSettings
 {
     public ApteanSettings Aptean { get; set; } = new();
     public OutputSettings Output { get; set; } = new();
+    public AzureStorageSettings AzureStorage { get; set; } = new();
 }
 
 public sealed class ApteanSettings
@@ -20,5 +21,11 @@ public sealed class ApteanSettings
 public sealed class OutputSettings
 {
     /// <summary>Path for the Bill-sync-compatible vendors Excel file.</summary>
-    public string Path { get; set; } = "../vendors.xlsx";
+    public string Path { get; set; } = "vendors.xlsx";
+}
+
+public sealed class AzureStorageSettings
+{
+    public string AccountName { get; set; } = string.Empty;
+    public string ContainerName { get; set; } = string.Empty;
 }

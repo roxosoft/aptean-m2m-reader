@@ -1,0 +1,57 @@
+name: Build and push
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/ApteanM2MReader/**
+      - Dockerfile
+      - aptean-m2m-reader.sln
+      - .github/workflows/build.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to ACR
+        run: az acr login --name "${ACR_LOGIN_SERVER%%.*}"
+        env:
+          ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+
+      - name: Build and push image
+        env:
+          ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          IMAGE="${ACR_LOGIN_SERVER}/aptean-m2m-reader"
+          docker build -t "${IMAGE}:latest" -t "${IMAGE}:1.0.${RUN_NUMBER}" .
+          docker push "${IMAGE}:latest"
+          docker push "${IMAGE}:1.0.${RUN_NUMBER}"
+
+      - name: Refresh Container Apps Job image
+        env:
+          ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+          RESOURCE_GROUP_NAME: ${{ vars.RESOURCE_GROUP_NAME }}
+          CONTAINER_APP_JOB_NAME: ${{ vars.CONTAINER_APP_JOB_NAME }}
+        run: |
+          set -euo pipefail
+          az containerapp job update \
+            --name "${CONTAINER_APP_JOB_NAME}" \
+            --resource-group "${RESOURCE_GROUP_NAME}" \
+            --image "${ACR_LOGIN_SERVER}/aptean-m2m-reader:latest"

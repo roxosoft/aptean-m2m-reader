@@ -1,6 +1,9 @@
+using Azure.Identity;
+using Azure.Storage.Blobs;
 using JetSolutions.ApteanM2MReader.Aptean;
 using JetSolutions.ApteanM2MReader.Config;
 using JetSolutions.ApteanM2MReader.Excel;
+using JetSolutions.ApteanM2MReader.Storage;
 using Microsoft.Extensions.Configuration;
 
 namespace JetSolutions.ApteanM2MReader;
@@ -53,6 +56,21 @@ internal static class Program
             VendorExcelWriter.Write(outputPath, fetch.Vendors);
             Console.WriteLine($"Wrote Excel: {Path.GetFullPath(outputPath)}");
 
+            if (!string.IsNullOrWhiteSpace(settings.AzureStorage.AccountName)
+                && !string.IsNullOrWhiteSpace(settings.AzureStorage.ContainerName))
+            {
+                var blobName = $"vendors-{DateTime.UtcNow:yyyyMMdd-HHmmss}.xlsx";
+                var blobClient = new BlobServiceClient(
+                    new Uri($"https://{settings.AzureStorage.AccountName}.blob.core.windows.net"),
+                    new DefaultAzureCredential());
+                var uploader = new VendorBlobUploader(blobClient);
+                var uri = await uploader.UploadAsync(
+                    settings.AzureStorage.ContainerName,
+                    blobName,
+                    outputPath);
+                Console.WriteLine($"Uploaded blob: {uri}");
+            }
+
             foreach (var sample in fetch.Vendors.Take(3))
             {
                 Console.WriteLine(
@@ -70,9 +88,25 @@ internal static class Program
 
     private static AppSettings LoadSettings(string[] args)
     {
-        var configuration = new ConfigurationBuilder()
+        var environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
+
+        var configurationBuilder = new ConfigurationBuilder()
             .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+            .AddEnvironmentVariables();
+
+        if (!environment.Equals("Development", StringComparison.OrdinalIgnoreCase))
+        {
+            var keyVaultName = Environment.GetEnvironmentVariable("KeyVault__Name");
+            if (!string.IsNullOrWhiteSpace(keyVaultName))
+            {
+                configurationBuilder.AddAzureKeyVault(
+                    new Uri($"https://{keyVaultName}.vault.azure.net/"),
+                    new DefaultAzureCredential());
+            }
+        }
+
+        var configuration = configurationBuilder
             .AddEnvironmentVariables()
             .AddCommandLine(args)
             .Build();
@@ -88,7 +122,8 @@ internal static class Program
         {
             throw new InvalidOperationException(
                 "Aptean credentials are incomplete. Copy appsettings.example.json to appsettings.json " +
-                "and fill the 'Aptean' section (BaseUrl, CompanyId, Tenant, ClientId, ClientSecret).");
+                "and fill the 'Aptean' section (BaseUrl, CompanyId, Tenant, ClientId, ClientSecret), " +
+                "or set environment variables / Key Vault secrets.");
         }
 
         if (string.IsNullOrWhiteSpace(a.ContextPath))
@@ -103,7 +138,7 @@ internal static class Program
 
         if (string.IsNullOrWhiteSpace(settings.Output.Path))
         {
-            settings.Output.Path = "../vendors.xlsx";
+            settings.Output.Path = "vendors.xlsx";
         }
 
         return settings;

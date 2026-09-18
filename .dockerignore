@@ -1,0 +1,12 @@
+.git
+.github
+.vscode
+.terraform
+**/.terraform
+**/bin
+**/obj
+terraform
+reports
+*.xlsx
+*.md
+**/.DS_Store

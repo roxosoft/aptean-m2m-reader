@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JetSolutions.ApteanM2MReader", "src\ApteanM2MReader\JetSolutions.ApteanM2MReader.csproj", "{7C3E8A91-4B2F-4D6A-9E11-8F5C2A1B3D4E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JetSolutions.BillVendorSync", "src\BillVendorSync\JetSolutions.BillVendorSync.csproj", "{9D4F6B82-1C8E-4A57-B203-6E9A4C7D5F10}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7C3E8A91-4B2F-4D6A-9E11-8F5C2A1B3D4E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7C3E8A91-4B2F-4D6A-9E11-8F5C2A1B3D4E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7C3E8A91-4B2F-4D6A-9E11-8F5C2A1B3D4E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7C3E8A91-4B2F-4D6A-9E11-8F5C2A1B3D4E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9D4F6B82-1C8E-4A57-B203-6E9A4C7D5F10}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9D4F6B82-1C8E-4A57-B203-6E9A4C7D5F10}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9D4F6B82-1C8E-4A57-B203-6E9A4C7D5F10}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9D4F6B82-1C8E-4A57-B203-6E9A4C7D5F10}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
