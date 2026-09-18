@@ -131,6 +131,10 @@ resource "azurerm_container_app_job" "reader" {
         value = "Production"
       }
       env {
+        name  = "AZURE_CLIENT_ID"
+        value = azurerm_user_assigned_identity.job.client_id
+      }
+      env {
         name  = "KeyVault__Name"
         value = azurerm_key_vault.kv.name
       }
