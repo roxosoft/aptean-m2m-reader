@@ -14,12 +14,11 @@ resource "azurerm_user_assigned_identity" "gha" {
 }
 
 resource "azurerm_federated_identity_credential" "gha_main" {
-  name                = "github-main"
-  resource_group_name = azurerm_resource_group.rg.name
-  parent_id           = azurerm_user_assigned_identity.gha.id
-  audience            = ["api://AzureADTokenExchange"]
-  issuer              = "https://token.actions.githubusercontent.com"
-  subject             = local.github_oidc_subject
+  name                      = "github-main"
+  user_assigned_identity_id = azurerm_user_assigned_identity.gha.id
+  audience                  = ["api://AzureADTokenExchange"]
+  issuer                    = "https://token.actions.githubusercontent.com"
+  subject                   = local.github_oidc_subject
 }
 
 resource "azurerm_role_assignment" "gha_acr_push" {
