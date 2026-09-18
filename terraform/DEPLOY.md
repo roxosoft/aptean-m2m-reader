@@ -131,6 +131,15 @@ Copy Terraform outputs into the GitHub repo **Settings → Secrets and variables
 
 No long-lived Azure credentials are stored in GitHub.
 
+The GitHub OIDC federated credential subject must match the token **exactly**.
+This repository uses GitHub’s immutable subject format:
+
+`repo:roxosoft@4310047/aptean-m2m-reader@1363178896:ref:refs/heads/main`
+
+A name-only subject (`repo:roxosoft/aptean-m2m-reader:ref:refs/heads/main`)
+fails with `AADSTS700213`. The owner/repo IDs come from the workflow log
+under **Federated token details**.
+
 ## 7. First image, then the job is live
 
 1. Run **Build and push** (workflow_dispatch) on `main`, or push a change under

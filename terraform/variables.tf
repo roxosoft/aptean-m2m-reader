@@ -76,6 +76,18 @@ variable "github_repository" {
   default     = "roxosoft/aptean-m2m-reader"
 }
 
+variable "github_owner_id" {
+  description = "Immutable GitHub organization ID included in the Actions OIDC subject"
+  type        = string
+  default     = "4310047"
+}
+
+variable "github_repository_id" {
+  description = "Immutable GitHub repository ID included in the Actions OIDC subject"
+  type        = string
+  default     = "1363178896"
+}
+
 variable "tags" {
   description = "Tags applied to all resources"
   type        = map(string)
