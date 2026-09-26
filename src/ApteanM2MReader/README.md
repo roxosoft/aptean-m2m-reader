@@ -1,16 +1,17 @@
 # Aptean M2M Web API Reader
 
 A .NET 8 console app that authenticates to the Aptean Made2Manage Web API,
-fetches vendors, and writes a Bill.com-sync-compatible Excel file. When Azure
-Storage is configured, it also uploads a timestamped blob
-(`vendors-yyyyMMdd-HHmmss.xlsx`).
+fetches vendors, writes a Bill.com-compatible Excel file, optionally uploads a
+timestamped blob, and (when Bill.com credentials are configured) matches and
+updates Bill.com vendor `companyName` values.
 
 ## Scope
 
 1. Obtain an OAuth access token via **Client Credentials**.
 2. `GET` all vendors from the M2M Web API (paged list), then enrich each with a detail `GET`.
-3. Write `vendors.xlsx` with headers expected by `JetSolutions.BillVendorSync` (plus State / Phone).
+3. Write `vendors.xlsx` with headers expected by Bill sync (plus State / Phone).
 4. Optionally upload that file to Azure Blob Storage.
+5. Optionally sync to Bill.com (exact matches auto-apply in Production).
 
 ## Credentials
 
@@ -30,6 +31,10 @@ optional: environment variables and Azure Key Vault can supply the same keys.
 | `Output:Path` | Local Excel output path (default `vendors.xlsx`) |
 | `AzureStorage:AccountName` | Storage account for blob upload (empty = skip upload) |
 | `AzureStorage:ContainerName` | Blob container (default `vendors`) |
+| `BillDotCom:*` | Bill.com v3 credentials (empty = skip Bill sync) |
+| `BillSync:Enabled` | `true`/`false`/omit (omit = run when BillDotCom creds present) |
+| `BillSync:AutoApplyExact` | Skip Y/N for exact matches (forced on in Production) |
+| `BillSync:AutoApplyRelaxed` | Skip Y/N for relaxed matches (default `false`) |
 
 Grant type on the API client must be **CLIENTCREDENTIALS**. The M2M user bound
 to that client is configured in APICONFIG (User Name field) — it is not sent in

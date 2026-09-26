@@ -2,15 +2,15 @@
 
 .NET 8 tools for Made2Manage vendor data. The scheduled production job is
 **ApteanM2MReader**: it authenticates to the Aptean M2M Web API, fetches vendors,
-writes a Bill.com-compatible Excel file, and (in Azure) uploads a timestamped
-blob.
+writes a Bill.com-compatible Excel file, uploads a timestamped blob (in Azure),
+and can sync matched M2M vendor IDs into Bill.com.
 
 ## Projects
 
 | Project | Path | Deployed |
 | --- | --- | --- |
 | [ApteanM2MReader](src/ApteanM2MReader/README.md) | `src/ApteanM2MReader` | Yes — Docker image, Azure Container Apps Job |
-| [BillVendorSync](src/BillVendorSync/README.md) | `src/BillVendorSync` | No — interactive laptop tool |
+| [BillVendorSync](src/BillVendorSync/README.md) | `src/BillVendorSync` | Library + optional interactive Excel→Bill tool |
 
 ## Local run (reader)
 

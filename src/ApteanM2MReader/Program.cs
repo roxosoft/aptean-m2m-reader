@@ -4,6 +4,8 @@ using JetSolutions.ApteanM2MReader.Aptean;
 using JetSolutions.ApteanM2MReader.Config;
 using JetSolutions.ApteanM2MReader.Excel;
 using JetSolutions.ApteanM2MReader.Storage;
+using JetSolutions.BillVendorSync;
+using JetSolutions.BillVendorSync.Excel;
 using Microsoft.Extensions.Configuration;
 
 namespace JetSolutions.ApteanM2MReader;
@@ -77,6 +79,27 @@ internal static class Program
                     $"  sample: {sample.VendorId} | {sample.Company} | {sample.City} | {sample.State} | {sample.ZipCode} | {sample.Phone}");
             }
 
+            if (ShouldRunBillSync(settings))
+            {
+                Console.WriteLine();
+                var m2mVendors = MapToM2MVendors(fetch.Vendors);
+                bool production = IsProduction();
+                bool autoExact = settings.BillSync.AutoApplyExact || production;
+                bool autoRelaxed = settings.BillSync.AutoApplyRelaxed;
+
+                await VendorSyncPipeline.RunAsync(
+                    m2mVendors,
+                    settings.BillDotCom,
+                    autoApplyExact: autoExact,
+                    autoApplyRelaxed: autoRelaxed,
+                    reportsDirectory: "reports");
+            }
+            else
+            {
+                Console.WriteLine();
+                Console.WriteLine("Bill.com sync skipped (BillDotCom credentials missing or BillSync:Enabled=false).");
+            }
+
             return 0;
         }
         catch (Exception ex)
@@ -84,6 +107,61 @@ internal static class Program
             Console.Error.WriteLine($"Error: {ex.Message}");
             return 1;
         }
+    }
+
+    private static IReadOnlyList<M2MVendor> MapToM2MVendors(IReadOnlyList<ApteanVendor> vendors)
+    {
+        var list = new List<M2MVendor>(vendors.Count);
+        for (int i = 0; i < vendors.Count; i++)
+        {
+            var v = vendors[i];
+            list.Add(new M2MVendor
+            {
+                M2MVendorId = v.VendorId,
+                VendorName = v.Company,
+                City = v.City,
+                ZipCode = v.ZipCode,
+                RowNumber = i + 1,
+            });
+        }
+
+        return list;
+    }
+
+    private static bool ShouldRunBillSync(AppSettings settings)
+    {
+        if (settings.BillSync.Enabled == false)
+        {
+            return false;
+        }
+
+        var b = settings.BillDotCom;
+        bool hasCreds = !string.IsNullOrWhiteSpace(b.DevKey)
+            && !string.IsNullOrWhiteSpace(b.Username)
+            && !string.IsNullOrWhiteSpace(b.OrganizationId)
+            && !string.IsNullOrWhiteSpace(b.Password);
+
+        if (settings.BillSync.Enabled == true)
+        {
+            if (!hasCreds)
+            {
+                throw new InvalidOperationException(
+                    "BillSync:Enabled is true but BillDotCom credentials are incomplete.");
+            }
+
+            return true;
+        }
+
+        // Enabled unset: run when credentials are present.
+        return hasCreds;
+    }
+
+    private static bool IsProduction()
+    {
+        var env = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+            ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+            ?? "";
+        return env.Equals("Production", StringComparison.OrdinalIgnoreCase);
     }
 
     private static AppSettings LoadSettings(string[] args)
@@ -155,7 +233,6 @@ internal static class Program
             }
         }
 
-        // Resolve relative paths against the project/cwd when possible, not bin/Debug.
         if (!Path.IsPathRooted(configuredPath))
         {
             return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), configuredPath));
