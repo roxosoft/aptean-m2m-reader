@@ -278,7 +278,11 @@ public static class VendorSyncPipeline
             warnings.Add($"zip='{PlaceholderZip}'");
         }
 
-        string country = !string.IsNullOrWhiteSpace(m2m.Country) ? m2m.Country! : "US";
+        string country = ToBillCountryCode(m2m.Country, out var countryNote);
+        if (countryNote is not null)
+        {
+            warnings.Add(countryNote);
+        }
 
         warning = warnings.Count == 0
             ? null
@@ -301,6 +305,77 @@ public static class VendorSyncPipeline
             },
         };
     }
+
+    /// <summary>
+    /// Bill.com requires ISO 3166-1 alpha-2 country codes. M2M often sends full names.
+    /// </summary>
+    private static string ToBillCountryCode(string? country, out string? note)
+    {
+        note = null;
+        if (string.IsNullOrWhiteSpace(country))
+        {
+            return "US";
+        }
+
+        var trimmed = country.Trim();
+        if (trimmed.Length == 2 && char.IsLetter(trimmed[0]) && char.IsLetter(trimmed[1]))
+        {
+            return trimmed.ToUpperInvariant();
+        }
+
+        var key = NormalizeCountryKey(trimmed);
+        if (CountryNameToCode.TryGetValue(key, out var code))
+        {
+            return code;
+        }
+
+        note = $"country '{trimmed}' unrecognized, using US";
+        return "US";
+    }
+
+    private static string NormalizeCountryKey(string value)
+    {
+        var chars = value.Where(c => !char.IsWhiteSpace(c) && c != '.' && c != ',').ToArray();
+        return new string(chars).ToUpperInvariant();
+    }
+
+    private static readonly Dictionary<string, string> CountryNameToCode = new(StringComparer.Ordinal)
+    {
+        ["UNITEDSTATES"] = "US",
+        ["UNITEDSTATESOFAMERICA"] = "US",
+        ["USA"] = "US",
+        ["AMERICA"] = "US",
+        ["CANADA"] = "CA",
+        ["MEXICO"] = "MX",
+        ["UNITEDKINGDOM"] = "GB",
+        ["GREATBRITAIN"] = "GB",
+        ["ENGLAND"] = "GB",
+        ["UK"] = "GB",
+        ["CHINA"] = "CN",
+        ["PEOPLESREPUBLICOFCHINA"] = "CN",
+        ["TAIWAN"] = "TW",
+        ["JAPAN"] = "JP",
+        ["GERMANY"] = "DE",
+        ["FRANCE"] = "FR",
+        ["ITALY"] = "IT",
+        ["SPAIN"] = "ES",
+        ["NETHERLANDS"] = "NL",
+        ["HOLLAND"] = "NL",
+        ["BELGIUM"] = "BE",
+        ["SWITZERLAND"] = "CH",
+        ["AUSTRALIA"] = "AU",
+        ["NEWZEALAND"] = "NZ",
+        ["INDIA"] = "IN",
+        ["BRAZIL"] = "BR",
+        ["SOUTHAFRICA"] = "ZA",
+        ["IRELAND"] = "IE",
+        ["ISRAEL"] = "IL",
+        ["SINGAPORE"] = "SG",
+        ["HONGKONG"] = "HK",
+        ["SOUTHKOREA"] = "KR",
+        ["KOREA"] = "KR",
+        ["REPUBLICOFKOREA"] = "KR",
+    };
 
     private static string? NullIfEmpty(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
