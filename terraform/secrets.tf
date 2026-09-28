@@ -50,3 +50,43 @@ resource "azurerm_key_vault_secret" "aptean_client_secret" {
   content_type = "text/plain"
   depends_on   = [time_sleep.kv_rbac]
 }
+
+resource "azurerm_key_vault_secret" "billcom_base_url" {
+  # Appsettings section is BillDotCom (Key Vault -- maps to :).
+  name         = "BillDotCom--BaseUrl"
+  value        = var.billcom_base_url
+  key_vault_id = azurerm_key_vault.kv.id
+  depends_on   = [time_sleep.kv_rbac]
+}
+
+resource "azurerm_key_vault_secret" "billcom_devkey" {
+  name         = "BillDotCom--DevKey"
+  value        = var.billcom_devkey
+  key_vault_id = azurerm_key_vault.kv.id
+  content_type = "text/plain"
+  depends_on   = [time_sleep.kv_rbac]
+}
+
+resource "azurerm_key_vault_secret" "billcom_organization_id" {
+  name         = "BillDotCom--OrganizationId"
+  value        = var.billcom_organization_id
+  key_vault_id = azurerm_key_vault.kv.id
+  content_type = "text/plain"
+  depends_on   = [time_sleep.kv_rbac]
+}
+
+resource "azurerm_key_vault_secret" "billcom_username" {
+  name         = "BillDotCom--Username"
+  value        = var.billcom_username
+  key_vault_id = azurerm_key_vault.kv.id
+  content_type = "text/plain"
+  depends_on   = [time_sleep.kv_rbac]
+}
+
+resource "azurerm_key_vault_secret" "billcom_password" {
+  name         = "BillDotCom--Password"
+  value        = var.billcom_password
+  key_vault_id = azurerm_key_vault.kv.id
+  content_type = "text/plain"
+  depends_on   = [time_sleep.kv_rbac]
+}

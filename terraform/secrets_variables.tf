@@ -39,3 +39,33 @@ variable "aptean_client_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "billcom_base_url" {
+  description = "BillCom Web API base URL"
+  type        = string
+  default     = "https://gateway.prod.bill.com/connect/v3/"
+}
+
+variable "billcom_devkey" {
+  description = "BillCom Dev Key"
+  type        = string
+  sensitive   = true
+}
+
+variable "billcom_organization_id" {
+  description = "BillCom Organization ID"
+  type        = string
+  sensitive   = true
+}
+
+variable "billcom_password" {
+  description = "BillCom API Password"
+  type        = string
+  sensitive   = true
+}
+
+variable "billcom_username" {
+  description = "BillCom API Username"
+  type        = string
+  sensitive   = true
+}
