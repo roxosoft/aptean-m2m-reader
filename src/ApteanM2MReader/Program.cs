@@ -85,13 +85,14 @@ internal static class Program
                 var m2mVendors = MapToM2MVendors(fetch.Vendors);
                 bool production = IsProduction();
                 bool autoExact = settings.BillSync.AutoApplyExact || production;
-                bool autoRelaxed = settings.BillSync.AutoApplyRelaxed;
+                bool autoRelaxed = settings.BillSync.AutoApplyRelaxed || production;
 
                 await VendorSyncPipeline.RunAsync(
                     m2mVendors,
                     settings.BillDotCom,
                     autoApplyExact: autoExact,
                     autoApplyRelaxed: autoRelaxed,
+                    autoCreate: autoExact,
                     reportsDirectory: "reports");
             }
             else
@@ -119,8 +120,13 @@ internal static class Program
             {
                 M2MVendorId = v.VendorId,
                 VendorName = v.Company,
+                StreetAddress = v.StreetAddress,
                 City = v.City,
+                State = v.State,
                 ZipCode = v.ZipCode,
+                Country = v.Country,
+                Phone = v.Phone,
+                Email = v.Email,
                 RowNumber = i + 1,
             });
         }

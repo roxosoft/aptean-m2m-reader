@@ -105,6 +105,27 @@ public sealed class VendorUpdateRequest
     public AddressDto? Address { get; set; }
 }
 
+public sealed class VendorCreateRequest
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("accountNumber")]
+    public string? AccountNumber { get; set; }
+
+    [JsonPropertyName("email")]
+    public string? Email { get; set; }
+
+    [JsonPropertyName("phone")]
+    public string? Phone { get; set; }
+
+    [JsonPropertyName("address")]
+    public AddressDto? Address { get; set; }
+
+    [JsonPropertyName("additionalInfo")]
+    public AdditionalInfoDto? AdditionalInfo { get; set; }
+}
+
 public sealed class BdcError
 {
     [JsonPropertyName("code")]

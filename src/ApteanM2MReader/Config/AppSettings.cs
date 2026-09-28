@@ -43,6 +43,6 @@ public sealed class BillSyncSettings
     /// <summary>Apply exact matches without Y/N (required for Azure scheduled jobs).</summary>
     public bool AutoApplyExact { get; set; }
 
-    /// <summary>Apply relaxed matches without Y/N (default off — lower confidence).</summary>
+    /// <summary>Apply relaxed matches without Y/N (also forced on in Production).</summary>
     public bool AutoApplyRelaxed { get; set; }
 }

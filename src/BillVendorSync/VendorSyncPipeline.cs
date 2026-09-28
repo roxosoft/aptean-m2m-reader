@@ -7,20 +7,23 @@ using JetSolutions.BillVendorSync.Reporting;
 namespace JetSolutions.BillVendorSync;
 
 /// <summary>
-/// Matches M2M vendors to Bill.com and optionally applies companyName updates.
+/// Matches M2M vendors to Bill.com, updates companyName on matches, and creates unmatched M2M vendors.
 /// </summary>
 public static class VendorSyncPipeline
 {
     private const string PlaceholderCity = "TBD";
     private const string PlaceholderZip = "00000";
+    private const string AutoImportAccountNumber = "M2M-AUTOIMPORT";
 
     /// <param name="autoApplyExact">When true, apply exact matches without Y/N.</param>
     /// <param name="autoApplyRelaxed">When true, apply relaxed matches without Y/N.</param>
+    /// <param name="autoCreate">When true, create unmatched M2M vendors without Y/N.</param>
     public static async Task RunAsync(
         IReadOnlyList<M2MVendor> m2mVendors,
         BillDotComSettings billSettings,
         bool autoApplyExact = false,
         bool autoApplyRelaxed = false,
+        bool autoCreate = false,
         string reportsDirectory = "reports",
         CancellationToken ct = default)
     {
@@ -43,12 +46,13 @@ public static class VendorSyncPipeline
 
             var exactUpdates = results.Where(r => r.WillUpdate && r.MatchType == VendorMatchType.Exact).ToList();
             var relaxedUpdates = results.Where(r => r.WillUpdate && r.MatchType == VendorMatchType.Relaxed).ToList();
+            var toCreate = results.Where(r => r.Status == MatchStatus.Unmatched && r.M2M is not null).ToList();
             var outcomes = new Dictionary<MatchResult, UpdateOutcome>();
 
-            if (exactUpdates.Count == 0 && relaxedUpdates.Count == 0)
+            if (exactUpdates.Count == 0 && relaxedUpdates.Count == 0 && toCreate.Count == 0)
             {
                 Console.WriteLine();
-                Console.WriteLine("No vendors require an update.");
+                Console.WriteLine("No vendors require an update or create.");
             }
 
             if (exactUpdates.Count > 0)
@@ -60,7 +64,7 @@ public static class VendorSyncPipeline
                         Console.WriteLine($"Auto-applying {exactUpdates.Count} EXACT update(s)...");
                     }
 
-                    await ApplyAllAsync(client, exactUpdates, outcomes, "exact", ct);
+                    await ApplyAllUpdatesAsync(client, exactUpdates, outcomes, "exact", ct);
                 }
                 else
                 {
@@ -79,11 +83,29 @@ public static class VendorSyncPipeline
                         Console.WriteLine($"Auto-applying {relaxedUpdates.Count} RELAXED update(s)...");
                     }
 
-                    await ApplyAllAsync(client, relaxedUpdates, outcomes, "relaxed", ct);
+                    await ApplyAllUpdatesAsync(client, relaxedUpdates, outcomes, "relaxed", ct);
                 }
                 else
                 {
                     Console.WriteLine("Relaxed updates skipped by user.");
+                }
+            }
+
+            if (toCreate.Count > 0)
+            {
+                Console.WriteLine();
+                if (autoCreate || Confirm($"Create {toCreate.Count} unmatched vendor(s) in Bill.com? (Y/N): "))
+                {
+                    if (autoCreate)
+                    {
+                        Console.WriteLine($"Auto-creating {toCreate.Count} vendor(s)...");
+                    }
+
+                    await CreateAllAsync(client, toCreate, outcomes, ct);
+                }
+                else
+                {
+                    Console.WriteLine("Creates skipped by user.");
                 }
             }
 
@@ -99,7 +121,7 @@ public static class VendorSyncPipeline
         }
     }
 
-    private static async Task ApplyAllAsync(
+    private static async Task ApplyAllUpdatesAsync(
         BillClient client,
         IReadOnlyList<MatchResult> updates,
         Dictionary<MatchResult, UpdateOutcome> outcomes,
@@ -115,9 +137,24 @@ public static class VendorSyncPipeline
         }
     }
 
+    private static async Task CreateAllAsync(
+        BillClient client,
+        IReadOnlyList<MatchResult> creates,
+        Dictionary<MatchResult, UpdateOutcome> outcomes,
+        CancellationToken ct)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"Creating {creates.Count} vendor(s)...");
+
+        foreach (var result in creates)
+        {
+            outcomes[result] = await ApplyCreateAsync(client, result, ct);
+        }
+    }
+
     private static async Task<UpdateOutcome> ApplyUpdateAsync(BillClient client, MatchResult result, CancellationToken ct)
     {
-        var outcome = new UpdateOutcome { Result = result };
+        var outcome = new UpdateOutcome { Result = result, Action = SyncAction.Update };
         var vendor = result.BillVendor!;
         var m2mId = result.M2M!.M2MVendorId;
 
@@ -183,6 +220,91 @@ public static class VendorSyncPipeline
         }
     }
 
+    private static async Task<UpdateOutcome> ApplyCreateAsync(BillClient client, MatchResult result, CancellationToken ct)
+    {
+        var m2m = result.M2M!;
+        var outcome = new UpdateOutcome { Result = result, Action = SyncAction.Create };
+
+        bool placeholderCity = string.IsNullOrWhiteSpace(m2m.City);
+        bool placeholderZip = string.IsNullOrWhiteSpace(m2m.ZipCode);
+
+        var request = BuildCreateRequest(m2m, out var warning);
+
+        try
+        {
+            var created = await SendWithTransientRetryAsync(
+                () => client.CreateVendorAsync(request, ct), ct);
+            outcome.Applied = true;
+            outcome.CreatedBillVendorId = created.Id;
+            outcome.Warning = warning;
+            if (!string.IsNullOrWhiteSpace(warning))
+            {
+                Console.WriteLine($"  [NEW!] {m2m.VendorName} -> {created.Id} (companyName '{m2m.M2MVendorId}') {warning}");
+            }
+            else
+            {
+                Console.WriteLine($"  [NEW]  {m2m.VendorName} -> {created.Id} (companyName '{m2m.M2MVendorId}')");
+            }
+
+            return outcome;
+        }
+        catch (Exception ex)
+        {
+            outcome.Applied = false;
+            outcome.Error = ex.Message;
+            Console.WriteLine($"  [FAIL] create {m2m.VendorName}: {ex.Message}");
+            return outcome;
+        }
+    }
+
+    private static VendorCreateRequest BuildCreateRequest(M2MVendor m2m, out string? warning)
+    {
+        var warnings = new List<string>();
+        string line1 = !string.IsNullOrWhiteSpace(m2m.StreetAddress) ? m2m.StreetAddress! : m2m.VendorName;
+        if (string.IsNullOrWhiteSpace(m2m.StreetAddress))
+        {
+            warnings.Add("line1 from company name");
+        }
+
+        string city = !string.IsNullOrWhiteSpace(m2m.City) ? m2m.City! : PlaceholderCity;
+        string zip = !string.IsNullOrWhiteSpace(m2m.ZipCode) ? m2m.ZipCode! : PlaceholderZip;
+        if (string.IsNullOrWhiteSpace(m2m.City))
+        {
+            warnings.Add($"city='{PlaceholderCity}'");
+        }
+
+        if (string.IsNullOrWhiteSpace(m2m.ZipCode))
+        {
+            warnings.Add($"zip='{PlaceholderZip}'");
+        }
+
+        string country = !string.IsNullOrWhiteSpace(m2m.Country) ? m2m.Country! : "US";
+
+        warning = warnings.Count == 0
+            ? null
+            : "Created with " + string.Join(", ", warnings);
+
+        return new VendorCreateRequest
+        {
+            Name = m2m.VendorName,
+            AccountNumber = AutoImportAccountNumber,
+            Email = NullIfEmpty(m2m.Email),
+            Phone = NullIfEmpty(m2m.Phone),
+            AdditionalInfo = new AdditionalInfoDto { CompanyName = m2m.M2MVendorId },
+            Address = new AddressDto
+            {
+                Line1 = line1,
+                City = city,
+                StateOrProvince = NullIfEmpty(m2m.State),
+                ZipOrPostalCode = zip,
+                Country = country,
+            },
+        };
+    }
+
+    private static string? NullIfEmpty(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
     private static AddressDto BuildAddressFill(VendorResponseDto vendor, string city, string zip)
     {
         var existing = vendor.Address;
@@ -205,6 +327,22 @@ public static class VendorSyncPipeline
             {
                 await action();
                 return;
+            }
+            catch (BillApiException ex) when (attempt < maxAttempts && IsTransient(ex))
+            {
+                await Task.Delay(500 * attempt, ct);
+            }
+        }
+    }
+
+    private static async Task<T> SendWithTransientRetryAsync<T>(Func<Task<T>> action, CancellationToken ct)
+    {
+        const int maxAttempts = 3;
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await action();
             }
             catch (BillApiException ex) when (attempt < maxAttempts && IsTransient(ex))
             {

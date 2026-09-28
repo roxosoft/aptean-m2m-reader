@@ -46,6 +46,21 @@ public sealed class ApteanApiClient : IDisposable
         "Phone", "PhoneNumber", "fphoneno", "fphone", "phone",
     };
 
+    private static readonly string[] StreetAliases =
+    {
+        "StreetAddress", "Street", "Address", "fstreet", "address1", "Address1",
+    };
+
+    private static readonly string[] CountryAliases =
+    {
+        "Country", "fcountry", "fcountryname", "country",
+    };
+
+    private static readonly string[] EmailAliases =
+    {
+        "EMail", "email", "Email", "RemittanceEmail",
+    };
+
     private readonly HttpClient _http;
     private readonly ApteanSettings _settings;
 
@@ -160,10 +175,13 @@ public sealed class ApteanApiClient : IDisposable
                 {
                     VendorId = FirstNonEmpty(mapped.VendorId, brief.VendorId)!,
                     Company = FirstNonEmpty(mapped.Company, brief.Company)!,
+                    StreetAddress = FirstNonEmpty(mapped.StreetAddress, brief.StreetAddress),
                     City = FirstNonEmpty(mapped.City, brief.City),
                     State = FirstNonEmpty(mapped.State, brief.State),
                     ZipCode = FirstNonEmpty(mapped.ZipCode, brief.ZipCode),
+                    Country = FirstNonEmpty(mapped.Country, brief.Country),
                     Phone = FirstNonEmpty(mapped.Phone, brief.Phone),
+                    Email = FirstNonEmpty(mapped.Email, brief.Email),
                 };
             }
             finally
@@ -429,10 +447,13 @@ public sealed class ApteanApiClient : IDisposable
         {
             VendorId = id?.Trim() ?? string.Empty,
             Company = company?.Trim() ?? string.Empty,
+            StreetAddress = NormalizeOptional(GetStringByAliases(element, StreetAliases)),
             City = NormalizeOptional(GetStringByAliases(element, CityAliases)),
             State = NormalizeOptional(GetStringByAliases(element, StateAliases)),
             ZipCode = NormalizeOptional(GetStringByAliases(element, ZipAliases)),
+            Country = NormalizeOptional(GetStringByAliases(element, CountryAliases)),
             Phone = NormalizeOptional(GetStringByAliases(element, PhoneAliases)),
+            Email = NormalizeOptional(GetStringByAliases(element, EmailAliases)),
         };
     }
 

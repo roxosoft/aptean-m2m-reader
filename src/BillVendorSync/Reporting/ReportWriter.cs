@@ -4,14 +4,23 @@ using JetSolutions.BillVendorSync.Matching;
 
 namespace JetSolutions.BillVendorSync.Reporting;
 
-/// <summary>Outcome of an attempted accountNumber update (populated during the apply phase).</summary>
+public enum SyncAction
+{
+    None = 0,
+    Update = 1,
+    Create = 2,
+}
+
+/// <summary>Outcome of an attempted Bill.com update or create.</summary>
 public sealed class UpdateOutcome
 {
     public required MatchResult Result { get; init; }
+    public SyncAction Action { get; set; } = SyncAction.Update;
     public bool Applied { get; set; }
+    public string? CreatedBillVendorId { get; set; }
     public string? Error { get; set; }
 
-    /// <summary>Non-fatal note attached to a successful update (e.g. placeholder address used).</summary>
+    /// <summary>Non-fatal note attached to a successful update/create (e.g. placeholder address).</summary>
     public string? Warning { get; set; }
 }
 
@@ -23,7 +32,7 @@ public static class ReportWriter
         var relaxedUpdate = results.Where(r => r.Status == MatchStatus.Matched && r.MatchType == VendorMatchType.Relaxed).ToList();
         var alreadySet = results.Where(r => r.Status == MatchStatus.AlreadySet).ToList();
         var ambiguous = results.Where(r => r.Status == MatchStatus.Ambiguous).ToList();
-        var unmatchedM2M = results.Where(r => r.Status == MatchStatus.Unmatched && r.M2M is not null).ToList();
+        var willCreate = results.Where(r => r.Status == MatchStatus.Unmatched && r.M2M is not null).ToList();
         var unmatchedBill = results.Where(r => r.Status == MatchStatus.Unmatched && r.M2M is null).ToList();
 
         Console.WriteLine();
@@ -51,18 +60,18 @@ public static class ReportWriter
             PrintRow(r.M2M?.VendorName, $"({r.Candidates.Count} candidates)", r.M2M?.M2MVendorId, null, $"Ambiguous ({r.MatchType.ToString().ToLowerInvariant()})");
         }
 
-        foreach (var r in unmatchedM2M)
+        foreach (var r in willCreate)
         {
-            PrintRow(r.M2M?.VendorName, null, r.M2M?.M2MVendorId, null, "Unmatched (M2M)");
+            PrintRow(r.M2M?.VendorName, null, r.M2M?.M2MVendorId, null, "Will create");
         }
 
         Console.WriteLine();
         Console.WriteLine("=== Preview summary ===");
         Console.WriteLine($"  Will update (exact)  : {exactUpdate.Count}");
         Console.WriteLine($"  Will update (relaxed): {relaxedUpdate.Count}");
+        Console.WriteLine($"  Will create          : {willCreate.Count}");
         Console.WriteLine($"  Skip (already set)   : {alreadySet.Count}");
         Console.WriteLine($"  Ambiguous            : {ambiguous.Count}");
-        Console.WriteLine($"  Unmatched (M2M)      : {unmatchedM2M.Count}");
         Console.WriteLine($"  Unmatched (Bill.com) : {unmatchedBill.Count}");
     }
 
@@ -73,24 +82,29 @@ public static class ReportWriter
 
     public static void PrintFinalSummary(IReadOnlyList<UpdateOutcome> outcomes, IReadOnlyList<MatchResult> allResults)
     {
-        int updatedExact = outcomes.Count(o => o.Applied && o.Result.MatchType == VendorMatchType.Exact);
-        int updatedRelaxed = outcomes.Count(o => o.Applied && o.Result.MatchType == VendorMatchType.Relaxed);
+        int updatedExact = outcomes.Count(o => o.Applied && o.Action == SyncAction.Update && o.Result.MatchType == VendorMatchType.Exact);
+        int updatedRelaxed = outcomes.Count(o => o.Applied && o.Action == SyncAction.Update && o.Result.MatchType == VendorMatchType.Relaxed);
+        int created = outcomes.Count(o => o.Applied && o.Action == SyncAction.Create);
         int placeholderAddr = outcomes.Count(o => o.Applied && !string.IsNullOrWhiteSpace(o.Warning));
-        int failed = outcomes.Count(o => !o.Applied);
+        int failedUpdates = outcomes.Count(o => !o.Applied && o.Action == SyncAction.Update);
+        int failedCreates = outcomes.Count(o => !o.Applied && o.Action == SyncAction.Create);
         int skipped = allResults.Count(r => r.Status == MatchStatus.AlreadySet);
         int ambiguous = allResults.Count(r => r.Status == MatchStatus.Ambiguous);
-        int unmatchedM2M = allResults.Count(r => r.Status == MatchStatus.Unmatched && r.M2M is not null);
         int unmatchedBill = allResults.Count(r => r.Status == MatchStatus.Unmatched && r.M2M is null);
-
+        int willCreateTotal = allResults.Count(r => r.Status == MatchStatus.Unmatched && r.M2M is not null);
+        int createAttempts = outcomes.Count(o => o.Action == SyncAction.Create);
+        int unmatchedM2MLeft = Math.Max(0, willCreateTotal - createAttempts);
         Console.WriteLine();
         Console.WriteLine("=== Final summary ===");
         Console.WriteLine($"  Updated (exact)      : {updatedExact}");
         Console.WriteLine($"  Updated (relaxed)    : {updatedRelaxed}");
+        Console.WriteLine($"  Created              : {created}");
         Console.WriteLine($"  ...incl. placeholder : {placeholderAddr}");
-        Console.WriteLine($"  Failed               : {failed}");
+        Console.WriteLine($"  Failed (updates)     : {failedUpdates}");
+        Console.WriteLine($"  Failed (creates)     : {failedCreates}");
         Console.WriteLine($"  Skipped (already set): {skipped}");
         Console.WriteLine($"  Ambiguous            : {ambiguous}");
-        Console.WriteLine($"  Unmatched (M2M)      : {unmatchedM2M}");
+        Console.WriteLine($"  Unmatched M2M (left) : {unmatchedM2MLeft}");
         Console.WriteLine($"  Unmatched (Bill.com) : {unmatchedBill}");
     }
 
@@ -104,22 +118,27 @@ public static class ReportWriter
         var path = Path.Combine(directory, fileName);
 
         var sb = new StringBuilder();
-        sb.AppendLine("Status,MatchType,VendorName,M2MVendorName,BillVendorId,M2MVendorID,CurrentCompanyName,Applied,Error,Note");
+        sb.AppendLine("Status,MatchType,Action,VendorName,M2MVendorName,BillVendorId,M2MVendorID,CurrentCompanyName,Applied,Error,Note");
 
         foreach (var r in results)
         {
             outcomes.TryGetValue(r, out var outcome);
             string applied = outcome is null ? string.Empty : outcome.Applied ? "true" : "false";
             string error = outcome?.Error ?? string.Empty;
+            string action = outcome is null || outcome.Action == SyncAction.None
+                ? string.Empty
+                : outcome.Action.ToString();
+            string billId = outcome?.CreatedBillVendorId ?? r.BillVendor?.Id ?? string.Empty;
             string vendorName = r.BillVendor?.Name ?? r.M2M?.VendorName ?? string.Empty;
 
             var note = string.Join(" ", new[] { r.Note, outcome?.Warning }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
             sb.Append(Csv(r.Status.ToString())).Append(',')
               .Append(Csv(r.MatchType.ToString())).Append(',')
+              .Append(Csv(action)).Append(',')
               .Append(Csv(vendorName)).Append(',')
               .Append(Csv(r.M2M?.VendorName)).Append(',')
-              .Append(Csv(r.BillVendor?.Id)).Append(',')
+              .Append(Csv(billId)).Append(',')
               .Append(Csv(r.M2M?.M2MVendorId)).Append(',')
               .Append(Csv(r.BillVendor?.AdditionalInfo?.CompanyName)).Append(',')
               .Append(Csv(applied)).Append(',')

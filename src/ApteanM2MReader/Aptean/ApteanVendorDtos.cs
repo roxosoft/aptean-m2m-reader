@@ -5,10 +5,13 @@ public sealed record ApteanVendor
 {
     public required string VendorId { get; init; }
     public required string Company { get; init; }
+    public string? StreetAddress { get; init; }
     public string? City { get; init; }
     public string? State { get; init; }
     public string? ZipCode { get; init; }
+    public string? Country { get; init; }
     public string? Phone { get; init; }
+    public string? Email { get; init; }
 }
 
 /// <summary>Result of fetching all vendor pages (and optional detail enrichment).</summary>

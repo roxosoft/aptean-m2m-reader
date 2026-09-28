@@ -5,7 +5,7 @@ namespace JetSolutions.ApteanM2MReader.Excel;
 
 /// <summary>
 /// Writes vendors to an Excel file with headers compatible with
-/// JetSolutions.BillVendorSync Excel/M2MVendorReader (plus State / Phone Number).
+/// JetSolutions.BillVendorSync Excel/M2MVendorReader (plus enriched columns).
 /// </summary>
 public static class VendorExcelWriter
 {
@@ -25,10 +25,13 @@ public static class VendorExcelWriter
 
         sheet.Cell(1, 1).Value = "Vendor";
         sheet.Cell(1, 2).Value = "Company";
-        sheet.Cell(1, 3).Value = "City";
-        sheet.Cell(1, 4).Value = "State";
-        sheet.Cell(1, 5).Value = "Zip Code";
-        sheet.Cell(1, 6).Value = "Phone Number";
+        sheet.Cell(1, 3).Value = "Street";
+        sheet.Cell(1, 4).Value = "City";
+        sheet.Cell(1, 5).Value = "State";
+        sheet.Cell(1, 6).Value = "Zip Code";
+        sheet.Cell(1, 7).Value = "Country";
+        sheet.Cell(1, 8).Value = "Phone Number";
+        sheet.Cell(1, 9).Value = "Email";
         sheet.Row(1).Style.Font.Bold = true;
 
         for (int i = 0; i < vendors.Count; i++)
@@ -37,10 +40,13 @@ public static class VendorExcelWriter
             int row = i + 2;
             sheet.Cell(row, 1).Value = v.VendorId;
             sheet.Cell(row, 2).Value = v.Company;
-            sheet.Cell(row, 3).Value = v.City ?? string.Empty;
-            sheet.Cell(row, 4).Value = v.State ?? string.Empty;
-            sheet.Cell(row, 5).Value = v.ZipCode ?? string.Empty;
-            sheet.Cell(row, 6).Value = v.Phone ?? string.Empty;
+            sheet.Cell(row, 3).Value = v.StreetAddress ?? string.Empty;
+            sheet.Cell(row, 4).Value = v.City ?? string.Empty;
+            sheet.Cell(row, 5).Value = v.State ?? string.Empty;
+            sheet.Cell(row, 6).Value = v.ZipCode ?? string.Empty;
+            sheet.Cell(row, 7).Value = v.Country ?? string.Empty;
+            sheet.Cell(row, 8).Value = v.Phone ?? string.Empty;
+            sheet.Cell(row, 9).Value = v.Email ?? string.Empty;
         }
 
         sheet.Columns().AdjustToContents();

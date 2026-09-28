@@ -11,7 +11,7 @@ updates Bill.com vendor `companyName` values.
 2. `GET` all vendors from the M2M Web API (paged list), then enrich each with a detail `GET`.
 3. Write `vendors.xlsx` with headers expected by Bill sync (plus State / Phone).
 4. Optionally upload that file to Azure Blob Storage.
-5. Optionally sync to Bill.com (exact matches auto-apply in Production).
+5. Optionally sync to Bill.com (exact + relaxed updates auto-apply in Production; unmatched M2M vendors are created).
 
 ## Credentials
 
@@ -34,7 +34,9 @@ optional: environment variables and Azure Key Vault can supply the same keys.
 | `BillDotCom:*` | Bill.com v3 credentials (empty = skip Bill sync) |
 | `BillSync:Enabled` | `true`/`false`/omit (omit = run when BillDotCom creds present) |
 | `BillSync:AutoApplyExact` | Skip Y/N for exact matches (forced on in Production) |
-| `BillSync:AutoApplyRelaxed` | Skip Y/N for relaxed matches (default `false`) |
+| `BillSync:AutoApplyRelaxed` | Skip Y/N for relaxed matches (forced on in Production) |
+
+In **Production** (`DOTNET_ENVIRONMENT=Production`), exact updates, relaxed updates, and creates of unmatched M2M vendors all run without prompts. Locally, confirm each step unless the AutoApply* flags are set.
 
 Grant type on the API client must be **CLIENTCREDENTIALS**. The M2M user bound
 to that client is configured in APICONFIG (User Name field) — it is not sent in
@@ -72,7 +74,7 @@ Example:
 
 `GET https://apps.m2m.apteangovcloud.com/webapi/api/Vendor/3CHEM`
 
-Mapped fields: `VendorNumber` → `Vendor`, `Company`, `City`, `State`, `ZipCode` → `Zip Code`, `Phone` → `Phone Number`.
+Mapped fields: `VendorNumber` → `Vendor`, `Company`, `StreetAddress` → `Street`, `City`, `State`, `ZipCode` → `Zip Code`, `Country`, `Phone` → `Phone Number`, `EMail` → `Email`.
 
 ### Excel columns
 
@@ -80,9 +82,12 @@ Mapped fields: `VendorNumber` → `Vendor`, `Company`, `City`, `State`, `ZipCode
 | --- | --- |
 | `Vendor` | M2M vendor ID |
 | `Company` | Vendor name |
+| `Street` | Street address |
 | `City` | City |
 | `State` | State |
 | `Zip Code` | Zip / postal code |
+| `Country` | Country |
 | `Phone Number` | Phone |
+| `Email` | Email |
 
-`Vendor` / `Company` / `City` / `Zip Code` match `Excel/M2MVendorReader` in the Bill.com sync project. Extra columns are ignored by that reader.
+`Vendor` / `Company` / `City` / `Zip Code` remain compatible with `Excel/M2MVendorReader`. Extra columns are ignored by that reader when present.

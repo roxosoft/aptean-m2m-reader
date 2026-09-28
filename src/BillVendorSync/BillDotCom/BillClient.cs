@@ -112,6 +112,28 @@ public sealed class BillClient : IDisposable
         await EnsureSuccessAsync(response, $"update vendor {vendorId}", ct);
     }
 
+    public async Task<VendorResponseDto> CreateVendorAsync(VendorCreateRequest body, CancellationToken ct = default)
+    {
+        EnsureLoggedIn();
+
+        var json = JsonSerializer.Serialize(body, _jsonOptions);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "vendors")
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+        };
+
+        using var response = await _http.SendAsync(request, ct);
+        await EnsureSuccessAsync(response, $"create vendor '{body.Name}'", ct);
+
+        var created = await response.Content.ReadFromJsonAsync<VendorResponseDto>(_jsonOptions, ct);
+        if (created is null || string.IsNullOrWhiteSpace(created.Id))
+        {
+            throw new BillApiException($"Create vendor '{body.Name}' succeeded but no vendor id was returned.");
+        }
+
+        return created;
+    }
+
     public async Task LogoutAsync(CancellationToken ct = default)
     {
         if (_sessionId is null)
